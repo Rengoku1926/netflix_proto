@@ -75,14 +75,14 @@ succeeds, the circuit closes and traffic flows again. If not, it stays open.
 └───────────┬────────────────────┬────────────────────┬───────────┘
             │                    │                    │
 ┌───────────▼──────┐  ┌──────────▼──────┐  ┌─────────▼────────┐
-│   Payment CB     │  │   Reco CB        │  │   User CB        │
-│  threshold: 3    │  │  threshold: 5    │  │  threshold: 3    │
-│  timeout:   5s   │  │  timeout:   8s   │  │  timeout:  6s    │
+│   Payment CB     │  │   Reco CB       │  │   User CB        │
+│  threshold: 3    │  │  threshold: 5   │  │  threshold: 3    │
+│  timeout:   5s   │  │  timeout:   8s  │  │  timeout:  6s    │
 └───────────┬──────┘  └──────────┬──────┘  └─────────┬────────┘
             │                    │                    │
 ┌───────────▼──────┐  ┌──────────▼──────┐  ┌─────────▼────────┐
-│  PaymentService  │  │   RecoService    │  │   UserService    │
-│  (DB-backed)     │  │   (ML model)     │  │  (auth provider) │
+│  PaymentService  │  │   RecoService   │  │   UserService    │
+│  (DB-backed)     │  │   (ML model)    │  │  (auth provider) │
 └──────────────────┘  └─────────────────┘  └──────────────────┘
 ```
 
@@ -134,7 +134,7 @@ Incoming Request
    │                     │ ──────────────────► │                     │
    │       CLOSED        │                     │        OPEN         │
    │  (requests pass     │ ◄────────────────── │   (fast-fail all    │
-   │   through)          │   probe fails        │    requests)        │
+   │   through)          │   probe fails       │    requests)        │
    └─────────────────────┘                     └──────────┬──────────┘
                                                           │
                                                  timeout elapsed
@@ -205,20 +205,20 @@ circuit-breaker-demo/
 
 ### States
 
-| State | Value | Meaning |
-|---|---|---|
-| `StateClosed` | 0 | Normal operation. All requests pass through to the service. |
-| `StateOpen` | 1 | Tripped. All requests are rejected immediately without calling the service. |
-| `StateHalfOpen` | 2 | Recovery probe. A limited number of requests are allowed through to test if the service has recovered. |
+| State           | Value | Meaning                                                                                                |
+| --------------- | ----- | ------------------------------------------------------------------------------------------------------ |
+| `StateClosed`   | 0     | Normal operation. All requests pass through to the service.                                            |
+| `StateOpen`     | 1     | Tripped. All requests are rejected immediately without calling the service.                            |
+| `StateHalfOpen` | 2     | Recovery probe. A limited number of requests are allowed through to test if the service has recovered. |
 
 ### Transition Rules
 
-| From | To | Trigger | Guard |
-|---|---|---|---|
-| CLOSED | OPEN | `afterExec` records a failure | `consecutiveFails >= FailureThreshold` |
-| OPEN | HALF-OPEN | `beforeExec` runs | `time.Since(lastFailureTime) >= OpenTimeout` |
-| HALF-OPEN | CLOSED | `afterExec` records a success | `consecutivePasses >= SuccessThreshold` |
-| HALF-OPEN | OPEN | `afterExec` records a failure | any failure during probing |
+| From      | To        | Trigger                       | Guard                                        |
+| --------- | --------- | ----------------------------- | -------------------------------------------- |
+| CLOSED    | OPEN      | `afterExec` records a failure | `consecutiveFails >= FailureThreshold`       |
+| OPEN      | HALF-OPEN | `beforeExec` runs             | `time.Since(lastFailureTime) >= OpenTimeout` |
+| HALF-OPEN | CLOSED    | `afterExec` records a success | `consecutivePasses >= SuccessThreshold`      |
+| HALF-OPEN | OPEN      | `afterExec` records a failure | any failure during probing                   |
 
 ### Why Atomic State + Mutex Counters?
 
@@ -610,6 +610,7 @@ func (gw *Gateway) createPayment(ctx context.Context, rec *PaymentRecord) error 
 ### Role
 
 The gateway is the single wiring point. It:
+
 - Owns one `*circuitbreaker.CircuitBreaker` per downstream service
 - Defines per-service configs (thresholds, timeouts)
 - Exposes `Execute`-wrapped methods to the handler layer
@@ -643,13 +644,14 @@ func (gw *Gateway) UserCB()    *circuitbreaker.CircuitBreaker
 
 ### Per-service CB configs in this project
 
-| Service | FailureThreshold | SuccessThreshold | OpenTimeout | MaxProbes |
-|---|---|---|---|---|
-| payment-service | 3 | 2 | 5s | 1 |
-| recommendation-service | 5 | 2 | 8s | 2 |
-| user-service | 3 | 1 | 6s | 1 |
+| Service                | FailureThreshold | SuccessThreshold | OpenTimeout | MaxProbes |
+| ---------------------- | ---------------- | ---------------- | ----------- | --------- |
+| payment-service        | 3                | 2                | 5s          | 1         |
+| recommendation-service | 5                | 2                | 8s          | 2         |
+| user-service           | 3                | 1                | 6s          | 1         |
 
 **Why different values?**
+
 - Payment is money — trip fast (3 failures) because a broken payment DB is an emergency
 - Reco is best-effort — allow more failures (5) before tripping; 80% of users can tolerate stale recs
 - User auth needs to recover quickly — only 1 success needed to re-close (SuccessThreshold=1)
@@ -1130,24 +1132,24 @@ Tier 2 — mutex (sync.Mutex):
   Guards: consecutiveFails, consecutivePasses, lastFailureTime, activeProbes
   These must change together — e.g. increment fail count AND check threshold AND maybe
   transition state is a unit of work. A mutex serialises that unit.
-  
+
   The lock is held only for:
     beforeExec — a few nanoseconds (no I/O, no fn call)
     afterExec  — a few nanoseconds (counter update + maybe transitionTo)
-  
+
   fn() itself runs outside the lock so thousands of goroutines can be mid-execution
   concurrently. Only the before/after bookkeeping is serialised.
 ```
 
 ### Why no background goroutine for timeout recovery?
 
-The OPEN → HALF-OPEN transition is *lazy*. There is no `time.AfterFunc` ticker checking
+The OPEN → HALF-OPEN transition is _lazy_. There is no `time.AfterFunc` ticker checking
 whether `OpenTimeout` has elapsed. Instead, `beforeExec` checks `time.Since(lastFailureTime)`
 on every blocked request. The first request that arrives after the timeout window has elapsed
 triggers the transition. This means:
 
 - Zero goroutine leak risk — nothing to clean up
-- Zero wakeup cost when the service is healthy (no transition needed)  
+- Zero wakeup cost when the service is healthy (no transition needed)
 - The "recovery window" triggers naturally when traffic resumes
 - Works correctly under zero traffic (no phantom transitions)
 
@@ -1244,31 +1246,31 @@ func CBMetricsHook() func(*circuitbreaker.CircuitBreaker, circuitbreaker.State, 
   "timestamp": "2025-10-12T14:32:00Z",
   "breakers": [
     {
-      "name":           "payment-service",
-      "state":          "OPEN",
+      "name": "payment-service",
+      "state": "OPEN",
       "total_requests": 1204,
-      "successes":      1187,
-      "failures":       17,
-      "rejections":     89,
-      "state_changes":  3
+      "successes": 1187,
+      "failures": 17,
+      "rejections": 89,
+      "state_changes": 3
     },
     {
-      "name":           "recommendation-service",
-      "state":          "CLOSED",
+      "name": "recommendation-service",
+      "state": "CLOSED",
       "total_requests": 8430,
-      "successes":      8198,
-      "failures":       232,
-      "rejections":     0,
-      "state_changes":  0
+      "successes": 8198,
+      "failures": 232,
+      "rejections": 0,
+      "state_changes": 0
     },
     {
-      "name":           "user-service",
-      "state":          "CLOSED",
+      "name": "user-service",
+      "state": "CLOSED",
       "total_requests": 9012,
-      "successes":      9012,
-      "failures":       0,
-      "rejections":     0,
-      "state_changes":  0
+      "successes": 9012,
+      "failures": 0,
+      "rejections": 0,
+      "state_changes": 0
     }
   ]
 }
@@ -1519,4 +1521,4 @@ func (b *Bulkhead) Execute(fn func() error) error {
 
 ---
 
-*Generated from the circuit-breaker-demo prototype. All code in this document is production-ready Go.*
+_Generated from the circuit-breaker-demo prototype. All code in this document is production-ready Go._

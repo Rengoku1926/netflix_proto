@@ -17,11 +17,11 @@ By the end of this step you have:
 
 ## 1. Prerequisites
 
-| Tool | Version | Why |
-|---|---|---|
-| Go | 1.22+ | We use `http.ServeMux` method-style routes (`"POST /payments"`) which landed in 1.22 |
-| Docker Desktop | any recent | For dockerized Redis/Postgres in later steps |
-| `make` (optional) | any | Convenience for repeated commands |
+| Tool              | Version    | Why                                                                                  |
+| ----------------- | ---------- | ------------------------------------------------------------------------------------ |
+| Go                | 1.22+      | We use `http.ServeMux` method-style routes (`"POST /payments"`) which landed in 1.22 |
+| Docker Desktop    | any recent | For dockerized Redis/Postgres in later steps                                         |
+| `make` (optional) | any        | Convenience for repeated commands                                                    |
 
 Verify:
 

@@ -21,12 +21,12 @@ Prometheus will run in **Docker** when we want to actually scrape — never inst
 
 Four pillars of circuit-breaker observability:
 
-| Signal | Type | Why |
-|---|---|---|
-| Current state | Gauge | Dashboards show CLOSED=green, OPEN=red instantly |
-| Requests by outcome | Counter | Failure rate = `rate(failure) / rate(total)` |
-| State transitions | Counter | Alert on "breaker flapping" (many transitions in a window) |
-| Rejections | Counter | Directly measures saved downstream load |
+| Signal              | Type    | Why                                                        |
+| ------------------- | ------- | ---------------------------------------------------------- |
+| Current state       | Gauge   | Dashboards show CLOSED=green, OPEN=red instantly           |
+| Requests by outcome | Counter | Failure rate = `rate(failure) / rate(total)`               |
+| State transitions   | Counter | Alert on "breaker flapping" (many transitions in a window) |
+| Rejections          | Counter | Directly measures saved downstream load                    |
 
 Prometheus counters are monotonic integers; gauges can go up or down. State is a gauge because it changes both ways; request counts only go up.
 
@@ -272,7 +272,7 @@ global:
 scrape_configs:
   - job_name: circuit-breaker-demo
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ["host.docker.internal:8080"]
 ```
 
 Add a Prometheus service to the `docker-compose.yml` you'll build in Step 12:
