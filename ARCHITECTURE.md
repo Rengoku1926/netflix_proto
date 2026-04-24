@@ -1522,3 +1522,92 @@ func (b *Bulkhead) Execute(fn func() error) error {
 ---
 
 _Generated from the circuit-breaker-demo prototype. All code in this document is production-ready Go._
+
+Good question. The short answer is: they don't fail each other directly — but they can fail each other indirectly through shared resources. Here's how:
+
+The real failure mode: shared thread/goroutine pool
+When the recommendation service is slow (not down — slow), this is what happens:
+
+
+Incoming request
+      │
+      ├── goroutine → call Payment service   (returns in 50ms) ✓
+      ├── goroutine → call Reco service      (hangs for 30s)   ← problem
+      └── goroutine → call User service      (returns in 80ms) ✓
+The goroutine waiting on Reco is stuck. Now multiply by traffic:
+
+
+1000 req/sec × 30s timeout = 30,000 goroutines stuck waiting on Reco
+Your server has finite memory. At some point:
+
+New requests can't get a goroutine → payment requests start failing too
+The process OOMs and crashes → everything is down
+This is called a cascading failure. Reco being slow killed Payment even though they share zero data.
+
+The second failure mode: shared infrastructure
+Even with perfectly isolated services, they often share:
+
+Shared resource	How Reco's failure spills
+Load balancer	Reco's unhealthy pods eat LB connection slots
+API gateway	Gateway's connection pool fills up with hung Reco calls
+Database connection pool	If they share a DB, Reco's long transactions hold locks
+Network bandwidth	Reco retrying at high volume saturates the NIC
+What the circuit breaker actually does
+Without CB — Reco is slow:
+
+
+Request → Gateway → tries Reco → waits 30s → timeout → error
+                              ↑ goroutine stuck here the whole time
+With CB — after Reco has failed N times, the breaker opens:
+
+
+Request → Gateway → CB is OPEN → fail immediately (no goroutine held)
+The CB converts latency into fast errors. Fast errors release goroutines immediately, so Payment's goroutine pool stays healthy even while Reco is down.
+
+The concrete scenario in this project
+In the gateway, all three service calls happen per request:
+
+
+func (g *Gateway) HandleRequest(ctx context.Context, userID int) error {
+    g.recoCB.Execute(func() error { return g.recoSvc.GetRecommendations(...) })
+    g.paymentCB.Execute(func() error { return g.paymentSvc.ProcessPayment(...) })
+    g.userCB.Execute(func() error { return g.userSvc.GetUser(...) })
+}
+If Reco is hanging, without a CB every request ties up goroutines for the full timeout duration. With the CB open on Reco, that call returns in microseconds — freeing the goroutine to serve the next request, and Payment calls continue unaffected.
+
+TL;DR: Services don't need to share data to kill each other. Slow responses hold goroutines/threads hostage, and when you run out of those, the whole process stops serving — including unrelated services running in the same gateway process. The circuit breaker's job is to make failures fast so shared execution resources (goroutines, threads, connection pools) don't get exhausted.
+
+do i have any script or dependency injection by which i can simulate traffic in this project and show that its working ?
+Let me look at what's already in the project.
+
+Bash
+IN
+find /Users/prateekmahapatra/Development/personal/blogs/netflix_proto -type f -name "*.go" | head -40 && echo "---" && ls /Users/prateekmahapatra/Development/personal/blogs/netflix_proto
+
+OUT
+---
+ARCHITECTURE.md
+steps
+The project only has the steps documentation — no actual code has been written yet. So there's no simulation script yet.
+
+Here's what you have and what you'd need:
+
+What the steps have planned:
+
+steps/11_testing.md has paymentSvc.Break() / paymentSvc.Repair() methods on the service — that's a controllable fault injection hook built into the fake service
+steps/12_docker.md mentions k6 load testing in step 13 (not written yet)
+What you don't have yet:
+
+No actual Go code implemented
+No CLI demo script
+No k6 or vegeta load test script
+Your options once the code is built, in order of effort:
+
+Option	What it is	Effort
+scenarios_test.go (already in step 11)	Calls Break()/Repair() programmatically, no HTTP, no traffic	Zero — just go test
+A cmd/demo/main.go shell script in Go	Loops HTTP calls, prints CB state, calls break/repair via an admin endpoint	Low
+k6 load test script	Sends realistic concurrent traffic, ramps up, shows latency impact	Medium
+Chaos tools (toxiproxy, pumba)	Injects real network delays/drops at the TCP level	High
+The fastest way to see it working is the scenarios_test.go from step 11 — it already has the full outage + recovery flow and prints pass/fail per step. No server needed, no HTTP, just go test -v ./....
+
+Want me to write a step 13 that adds a cmd/demo interactive terminal demo — one that actually prints the CB state transitions in real time as it fires traffic?

@@ -1,0 +1,17 @@
+# Go build artifacts
+/circuit-breaker-demo
+*.test
+*.out
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+
+# Env files (secrets live here)
+.env
+.env.local
+
+# Docker volumes mounted into the project
+/pgdata/
+/redisdata/
