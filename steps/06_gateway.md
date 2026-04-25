@@ -234,21 +234,21 @@ Gateway ───┼─ recoCB    ─── reco    (CLOSED — still serving!)
            └─ userCB    ─── user    (CLOSED — still serving!)
 ```
 
-A single global CB would trip on *any* downstream failure — a flaky reco model would block payments. Absurd. One CB per service means each failure is contained.
+A single global CB would trip on _any_ downstream failure — a flaky reco model would block payments. Absurd. One CB per service means each failure is contained.
 
 Each service also gets its own tuning (see `ARCHITECTURE.md §9`):
 
-| Service | Fail Thr | Reason |
-|---|---|---|
-| payment | 3 | Money — trip fast |
-| reco | 5 | Best-effort — be forgiving |
-| user | 3 | Auth — recover fast (SuccessThreshold=1) |
+| Service | Fail Thr | Reason                                   |
+| ------- | -------- | ---------------------------------------- |
+| payment | 3        | Money — trip fast                        |
+| reco    | 5        | Best-effort — be forgiving               |
+| user    | 3        | Auth — recover fast (SuccessThreshold=1) |
 
 ---
-
+ 
 ## 7. Helper for error classification
 
-Callers will want to know *why* a gateway call failed. A small helper makes this explicit:
+Callers will want to know _why_ a gateway call failed. A small helper makes this explicit:
 
 ```go
 // IsCircuitError reports whether err came from a tripped circuit breaker.
