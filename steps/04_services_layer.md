@@ -9,7 +9,7 @@
 By the end of this step you have a `services` package with three mock services that:
 
 - Each implement a clean interface (so they can be swapped for real DB-backed versions later)
-- Expose failure-injection helpers: `Break()` / `Repair()` / `SetFailRate()`
+- Expose failure-injection helpers: `Break()` / `Repair()` / `SetFailRate()`          
 - Simulate realistic I/O latency
 - Are goroutine-safe (atomic flags, no locks on the hot path)
 

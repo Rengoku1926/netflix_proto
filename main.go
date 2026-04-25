@@ -1,7 +1,12 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"netflix-proto/config"
+)
 
 func main() {
-	fmt.Println("circuit breaker")
+	cfg := config.Load()
+	fmt.Printf("config loaded — payment fail threshold = %d\n",
+        cfg.Breakers.Payment.FailureThreshold)
 }

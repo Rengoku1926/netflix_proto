@@ -147,11 +147,11 @@ func getDuration(key string, def time.Duration) time.Duration {
 
 ### Why these defaults?
 
-| Service | Fail Thr | Succ Thr | Open | Reason |
-|---|---|---|---|---|
-| payment | 3 | 2 | 5s | Money is critical — trip fast, probe carefully |
-| recommendation | 5 | 2 | 8s | Best-effort; stale recs are fine, so be forgiving |
-| user (auth) | 3 | 1 | 6s | Close on first probe — auth must recover quickly |
+| Service        | Fail Thr | Succ Thr | Open | Reason                                            |
+| -------------- | -------- | -------- | ---- | ------------------------------------------------- |
+| payment        | 3        | 2        | 5s   | Money is critical — trip fast, probe carefully    |
+| recommendation | 5        | 2        | 8s   | Best-effort; stale recs are fine, so be forgiving |
+| user (auth)    | 3        | 1        | 6s   | Close on first probe — auth must recover quickly  |
 
 See `ARCHITECTURE.md §9` for the full rationale.
 
@@ -164,14 +164,32 @@ See `ARCHITECTURE.md §9` for the full rationale.
 ```yaml
 server:
   port: "8080"
-  read_timeout:  "10s"
+  read_timeout: "10s"
   write_timeout: "30s"
-  idle_timeout:  "120s"
+  idle_timeout: "120s"
 
 breakers:
-  payment:        { failure_threshold: 3, success_threshold: 2, open_timeout: "5s", max_half_open_probes: 1 }
-  recommendation: { failure_threshold: 5, success_threshold: 2, open_timeout: "8s", max_half_open_probes: 2 }
-  user:           { failure_threshold: 3, success_threshold: 1, open_timeout: "6s", max_half_open_probes: 1 }
+  payment:
+    {
+      failure_threshold: 3,
+      success_threshold: 2,
+      open_timeout: "5s",
+      max_half_open_probes: 1,
+    }
+  recommendation:
+    {
+      failure_threshold: 5,
+      success_threshold: 2,
+      open_timeout: "8s",
+      max_half_open_probes: 2,
+    }
+  user:
+    {
+      failure_threshold: 3,
+      success_threshold: 1,
+      open_timeout: "6s",
+      max_half_open_probes: 1,
+    }
 ```
 
 ---

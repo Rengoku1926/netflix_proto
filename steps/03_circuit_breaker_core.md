@@ -53,7 +53,7 @@ counters (consecutiveFails…) — read+written under sync.Mutex
 metrics (totalRequests…)     — atomic add, atomic read (eventual consistency)
 ```
 
-Why split? **The hot path is `cb.State()` — it runs on every single request.** Making it lock-free (atomic) means 10,000 concurrent goroutines can all check state in parallel with zero contention. Only the rare *transition* (a few times per outage) needs the mutex.
+Why split? **The hot path is `cb.State()` — it runs on every single request.** Making it lock-free (atomic) means 10,000 concurrent goroutines can all check state in parallel with zero contention. Only the rare _transition_ (a few times per outage) needs the mutex.
 
 ### Lazy recovery (no background goroutine)
 
