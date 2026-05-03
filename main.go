@@ -10,6 +10,7 @@ import (
 	"netflix-proto/gateway"
 	"netflix-proto/handler"
 	"netflix-proto/middleware"
+	"netflix-proto/observability"
 	"netflix-proto/services"
 	"os"
 	"os/signal"
@@ -26,6 +27,8 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
+	logHook := observability.CBLogger(logger)
+
 	// --- Services ---------------------------------------------------------
 	paymentSvc := services.NewPaymentService()
 	recoSvc := services.NewRecommendationService()
@@ -33,16 +36,9 @@ func main() {
 
 	// --- Gateway ----------------------------------------------------------
 	onStateChange := func(cb *circuitbreaker.CircuitBreaker, from, to circuitbreaker.State) {
-		level := slog.LevelInfo
-		if to == circuitbreaker.StateOpen {
-			level = slog.LevelWarn
-		}
-		logger.Log(context.Background(), level, "circuit_breaker_transition",
-			"breaker", cb.Name(),
-			"from", from.String(),
-			"to", to.String(),
-		)
+		logHook(cb, from, to)
 	}
+
 	gw := gateway.New(paymentSvc, recoSvc, userSvc, cfg.Breakers, onStateChange)
 
 	// --- Handlers ---------------------------------------------------------
@@ -51,6 +47,8 @@ func main() {
 	userH := handler.NewUserHandler(gw)
 	healthH := handler.NewHealthHandler(gw)
 
+	observability.RegisterBreakerCollector(gw.Breakers())
+
 	// --- Routes -----------------------------------------------------------
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /payments", paymentH.Create)
@@ -58,6 +56,7 @@ func main() {
 	mux.HandleFunc("GET /users/{userID}", userH.Get)
 	mux.HandleFunc("GET /health", healthH.Liveness)
 	mux.HandleFunc("GET /health/circuit-breakers", healthH.CircuitBreakers)
+	mux.Handle("GET /metrics", observability.Handler())
 
 	debugH := handler.NewDebugHandler(paymentSvc, userSvc, recoSvc)
 	mux.HandleFunc("POST /debug/payment/break", debugH.BreakPayment)
